@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>공유 캘린더 웹</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f9f9f9;
+        }
+
+        #calendar-container {
+            width: 90%;
+            max-width: 1100px;
+            margin: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        .popup-content {
+            position: relative;
+        }
+
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 5;
+        }
+
+        form label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+        }
+
+        form input,
+        form textarea,
+        form button {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        form button {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        form button:hover {
+            background-color: #0056b3;
+        }
+
+        #login-form {
+            display: flex;
+            flex-direction: column;
+            max-width: 300px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            background: white;
+        }
+
+        .button {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .btn {
+            background-color: #fa8072;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: #ffe4e1;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="login-container">
+        <form id="login-form">
+            <label for="username">아이디:</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">비밀번호:</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">로그인</button>
+        </form>
+    </div>
+
+    <div id="calendar-container" style="display: none;">
+        <div id="calendar"></div>
+    </div>
+
+    <div id="popup" class="popup">
+        <div class="popup-content">
+            <span class="close" id="closePopup">&times;</span>
+            <h2>일정 추가</h2>
+            <form id="scheduleForm">
+                <label for="name">이름:</label>
+                <input type="text" id="name" name="name" required>
+
+                <label for="startDate">시작 날짜:</label>
+                <input type="date" id="startDate" name="startDate" required>
+
+                <label for="endDate">종료 날짜:</label>
+                <input type="date" id="endDate" name="endDate" required>
+
+                <label for="startTime">시작 시간:</label>
+                <input type="time" id="startTime" name="startTime" required>
+
+                <label for="endTime">종료 시간:</label>
+                <input type="time" id="endTime" name="endTime" required>
+
+                <label for="details">일정 내용:</label>
+                <textarea id="details" name="details" required></textarea>
+
+                <button type="submit">추가하기</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="overlay" class="overlay"></div>
+    <div id="detailPopup" class="popup">
+        <div class="popup-content">
+            <span class="close" id="closeDetailPopup">&times;</span>
+            <h2>일정 상세 정보</h2>
+            <p><strong>이름:</strong> <span id="eventName"></span></p>
+            <p><strong>시작 시간:</strong> <span id="eventStartTime"></span></p>
+            <p><strong>종료 시간:</strong> <span id="eventEndTime"></span></p>
+            <p><strong>내용:</strong> <span id="eventDetails"></span></p>
+            <button class="btn" id="deleteEventButton">삭제하기</button>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <script>
+        const encryptedFirebaseConfig = {
+            apiKey: "U2FsdGVkX1+azptcuRYqypRFJFqTe9gnyV6yLYbWQ/9IRxFqEy+t/Wi05wWv4vwnwuGlvtDzTktg4Gia5HcVNQ===",
+            authDomain: "U2FsdGVkX1/Rt+coNM9zc8Weh5anXidK47KdOM9roGaULfV2GLogaXfy9tu5ydg8",
+            databaseURL: "U2FsdGVkX19IW/2uQLfzvRSTeyEQcHQVk7ogp+9umq0ANJHu7fds9GBDUuUxnnZ/bn/4jhuwTUS7ZTvPY+Et9wc6vFP2BBtoUvduD5ItTzc5mxsK9fGMbCBcvqXsSpE+",
+            projectId: "U2FsdGVkX1+aAKOByHqpFd/JgOlSv/EJCklCmCvJVLA=",
+            storageBucket: "U2FsdGVkX1+wXp2huB9dyv6Kc1SB2IQ4Jd9NfSlcWZ15w7kNRLZlifv7v7dlVeWI",
+            messagingSenderId: "U2FsdGVkX1+8yxzuM/knxbQ7lBARspIT6Vnoa/bL8js=",
+            appId: "U2FsdGVkX19BtdGYWrCAVcneP3np62MyccuSOj30yg4Xg09csXZ3ta1/prGgkcaK029E5f5ojzA5hFJEbJf8+Q==",
+            measurementId: "U2FsdGVkX19u3xJeqylzh75BfUwaqNKMqRzFAFyqGC0="
+        };
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const loginForm = document.getElementById("login-form");
+            const loginContainer = document.getElementById("login-container");
+            const calendarContainer = document.getElementById("calendar-container");
+            const usernameHash = "3f002d839d6eeaee05d5265642bbed0aae3e7832628ce950907270ed71a0f7de"; 
+
+            async function hashString(str) {
+                const buffer = new TextEncoder().encode(str);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                return hashHex;
+            }
+
+            loginForm.addEventListener("submit", async function (e) {
+                e.preventDefault();
+                const inputUsername = document.getElementById("username").value;
+                const inputPassword = document.getElementById("password").value;
+
+                const inputUsernameHash = await hashString(inputUsername);
+
+                if (inputUsernameHash === usernameHash) {
+                    try {
+                        const firebaseConfig = {};
+                        for (const [configKey, encryptedValue] of Object.entries(encryptedFirebaseConfig)) {
+                            const bytes = CryptoJS.AES.decrypt(encryptedValue, inputPassword);
+                            firebaseConfig[configKey] = bytes.toString(CryptoJS.enc.Utf8);
+                        }
+                        firebase.initializeApp(firebaseConfig);
+                        const db = firebase.database();
+
+                        loginContainer.style.display = "none";
+                        calendarContainer.style.display = "block";
+                        loadCalendar(db);
+                    } catch (error) {
+                        alert("비밀번호가 잘못되었습니다.");
+                    }
+                } else {
+                    alert("아이디가 잘못되었습니다.");
+                }
+            });
+
+            function loadCalendar(db) {
+                const popup = document.getElementById("popup");
+                const overlay = document.getElementById("overlay");
+                const closePopup = document.getElementById("closePopup");
+                const scheduleForm = document.getElementById("scheduleForm");
+                const detailPopup = document.getElementById("detailPopup");
+                const closeDetailPopup = document.getElementById("closeDetailPopup");
+                const deleteEventButton = document.getElementById("deleteEventButton");
+                let calendar;
+
+                function openPopup(date) {
+                    popup.style.display = "block";
+                    overlay.style.display = "block";
+                    scheduleForm.dataset.date = date;
+                }
+
+                function closePopupHandler() {
+                    popup.style.display = "none";
+                    overlay.style.display = "none";
+                }
+
+                closePopup.addEventListener("click", closePopupHandler);
+                overlay.addEventListener("click", closePopupHandler);
+
+                scheduleForm.addEventListener("submit", function (e) {
+                    e.preventDefault();
+                    const name = document.getElementById("name").value;
+                    const startDate = document.getElementById("startDate").value;
+                    const endDate = document.getElementById("endDate").value;
+                    const startTime = document.getElementById("startTime").value;
+                    const endTime = document.getElementById("endTime").value;
+                    const details = document.getElementById("details").value;
+
+                    const newEvent = {
+                        title: `${name}: ${details}`,
+                        start: `${startDate}T${startTime}`,
+                        end: `${endDate}T${endTime}`
+                    };
+
+                    const newEventRef = db.ref("calendarEvents").push();
+                    newEvent.id = newEventRef.key;
+                    newEventRef.set(newEvent, (error) => {
+                        if (error) {
+                            console.error("Error saving event to database: ", error);
+                        } else {
+                            calendar.addEvent(newEvent);
+                            closePopupHandler();
+                        }
+                    });
+                });
+
+                function openDetailPopup(event) {
+                    document.getElementById("eventName").textContent = event.title.split(':')[0];
+                    document.getElementById("eventStartTime").textContent = event.start;
+                    document.getElementById("eventEndTime").textContent = event.end;
+                    document.getElementById("eventDetails").textContent = event.title.split(': ')[1];
+                    detailPopup.dataset.eventId = event.id;
+                    detailPopup.style.display = "block";
+                    overlay.style.display = "block";
+                }
+
+                closeDetailPopup.addEventListener("click", function () {
+                    detailPopup.style.display = "none";
+                    overlay.style.display = "none";
+                });
+
+                deleteEventButton.addEventListener("click", function () {
+                    const eventId = detailPopup.dataset.eventId;
+                    db.ref(`calendarEvents/${eventId}`).remove().then(() => {
+                        calendar.getEventById(eventId).remove();
+                        detailPopup.style.display = "none";
+                        overlay.style.display = "none";
+                    }).catch((error) => {
+                        console.error("Error deleting event: ", error);
+                    });
+                });
+
+                const calendarEl = document.getElementById('calendar');
+                calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'dayGridMonth',
+                    selectable: true,
+                    editable: true,
+                    events: [],
+                    headerToolbar: {
+                        start: 'prev,next today',
+                        center: 'title',
+                        end: 'dayGridMonth,timeGridWeek,timeGridDay'
+                    },
+                    dateClick: function (info) {
+                        openPopup(info.dateStr);
+                    },
+                    eventClick: function (info) {
+                        openDetailPopup(info.event);
+                    },
+                    eventDrop: function (info) {
+                        const event = info.event;
+                        db.ref(`calendarEvents/${event.id}`).update({
+                            start: event.start.toISOString(),
+                            end: event.end ? event.end.toISOString() : null
+                        }).then(() => {
+                            console.log("Event updated successfully.");
+                        }).catch((error) => {
+                            console.error("Error updating event: ", error);
+                        });
+                    }
+                });
+
+                // Load events from Firebase
+                db.ref("calendarEvents").once('value').then((snapshot) => {
+                    snapshot.forEach((childSnapshot) => {
+                        const event = childSnapshot.val();
+                        calendar.addEvent(event);
+                    });
+                    calendar.render();
+                }).catch((error) => {
+                    console.error("Error loading events: ", error);
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
