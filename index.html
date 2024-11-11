@@ -163,10 +163,10 @@
                 <input type="date" id="endDate" name="endDate" required>
 
                 <label for="startTime">시작 시간:</label>
-                <input type="time" id="startTime" name="startTime" required>
+                <input type="time" id="startTime" name="startTime" value="12:00" required>
 
                 <label for="endTime">종료 시간:</label>
-                <input type="time" id="endTime" name="endTime" required>
+                <input type="time" id="endTime" name="endTime" value="12:00" required>
 
                 <label for="details">일정 내용:</label>
                 <textarea id="details" name="details" required></textarea>
@@ -205,7 +205,7 @@
             const loginForm = document.getElementById("login-form");
             const loginContainer = document.getElementById("login-container");
             const calendarContainer = document.getElementById("calendar-container");
-            const usernameHash = "3f002d839d6eeaee05d5265642bbed0aae3e7832628ce950907270ed71a0f7de"; 
+            const usernameHash = "3f002d839d6eeaee05d5265642bbed0aae3e7832628ce950907270ed71a0f7de";
 
             async function hashString(str) {
                 const buffer = new TextEncoder().encode(str);
@@ -257,6 +257,10 @@
                     popup.style.display = "block";
                     overlay.style.display = "block";
                     scheduleForm.dataset.date = date;
+                    document.getElementById("startDate").value = date;
+                    document.getElementById("endDate").value = date;
+                    document.getElementById("startTime").value = "12:00";
+                    document.getElementById("endTime").value = "12:00";
                 }
 
                 function closePopupHandler() {
